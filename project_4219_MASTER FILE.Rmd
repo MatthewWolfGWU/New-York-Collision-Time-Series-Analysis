@@ -1,0 +1,862 @@
+---
+title: "project_4219"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-03-24"
+---
+
+#Matthew, Jonathan, Jesse, Henrique
+#setwd("C:/Users/flank/Desktop/4219_FA/Project") ---This is the working directory for this 
+
+#Importing important packages
+```{r}
+library(tseries)
+#install.packages("Metrics")
+library(Metrics) #For computing evaluation metrics
+library(dplyr) #Need for some basic data cleaning
+```
+
+## Introduction) Reading in the data, creating monthly and daily seasonal dummy variables.
+```{r}
+#Reading in the data
+all= read.csv("NYC_Daily_Collisions (1).csv") #Name of csv file to read in
+#JON: below is how I am going about reading in the data, using my absolute directory path
+#all = read.csv("C:\\Users\\dell\\OneDrive\\Desktop\\GWU Spring '25\\Forecasting Analytics\\Semester Long Project\\NYC_Daily_Collisions.csv")
+all = data.frame(all) #Combine all columns
+
+#Creating Month Column
+all$DATE <- as.Date(all$DATE, format = "%m/%d/%Y") #Convert date data to proper date col
+all$Month <- as.factor(format(all$DATE, "%b")) #Have month be a
+month_order <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") #Ensure that the order of months is understood by R, before it was ordering it by alphabetical
+all$Month <- factor(all$Month, levels = month_order) #See above
+
+#Create Time Series Object
+crash = ts(data = all, start = c(2016,1), frequency = 7) #1/1/16 is a friday, frequency is 7 because seasonal cycle we are observing is daily (7 days in a week)
+
+#Create Column for day of week
+crash_day = cycle(crash) #This creates a cycle representing each day of the week
+all$WKDY = crash_day #Create column for weekday 1-7
+
+#Create training and holdout samples
+train_crash <- crash[,"COLLISIONS"][1:600] #600 observations for the training data
+test_crash <- crash[,"COLLISIONS"][601:731] #131 observations for the holdout (test) data
+
+train_day <- crash_day[1:600]#The day of week to be used for the training data
+test_day <- crash_day[601:731]#The day of the week to be used for the holdout (test) data
+
+#Create training data for TMAX col
+train_TMAX = crash[,"TMAX"][1:600] #Max temperature of the day
+test_TMAX = crash[,"TMAX"][601:731]
+
+#Create training data for PRCP col
+train_PRCP = crash[,"PRCP"][1:600] #precipitation in (inches or centimeters?) for the day
+test_PRCP = crash[,"PRCP"][601:731] 
+
+
+```
+
+```{r}
+# Creation of manual dummy variables for month
+n=nrow(all) #Use Nrow to get row count of df 
+m1=rep(0,n)
+m2=rep(0,n)
+m3=rep(0,n)
+m4=rep(0,n)
+m5=rep(0,n)
+m6=rep(0,n)
+m7=rep(0,n)
+m8=rep(0,n)
+m9=rep(0,n)
+m10=rep(0,n)
+m11=rep(0,n)
+m12=rep(0,n)
+
+for (i in 1:n){
+  if (all$Month[i]=="Jan") m1[i]=1 else m1[i]=0 # When month column is ="jan" 1 is assigned to first month dummy indicator
+  if (all$Month[i]=="Feb") m2[i]=1 else m2[i]=0
+  if (all$Month[i]=="Mar") m3[i]=1 else m3[i]=0
+  if (all$Month[i]=="Apr") m4[i]=1 else m4[i]=0
+  if (all$Month[i]=="May") m5[i]=1 else m5[i]=0
+  if (all$Month[i]=="Jun") m6[i]=1 else m6[i]=0
+  if (all$Month[i]=="Jul") m7[i]=1 else m7[i]=0
+  if (all$Month[i]=="Aug") m8[i]=1 else m8[i]=0
+  if (all$Month[i]=="Sep") m9[i]=1 else m9[i]=0
+  if (all$Month[i]=="Oct") m10[i]=1 else m10[i]=0
+  if (all$Month[i]=="Nov") m11[i]=1 else m11[i]=0
+  if (all$Month[i]=="Dec") m12[i]=1 else m12[i]=0
+}
+# Monthly dummies for train
+m1_train <- m1[1:600]
+m2_train <- m2[1:600]
+m3_train <- m3[1:600]
+m4_train <- m4[1:600]
+m5_train <- m5[1:600]
+m6_train <- m6[1:600]
+m7_train <- m7[1:600]
+m8_train <- m8[1:600]
+m9_train <- m9[1:600]
+m10_train <- m10[1:600]
+m11_train <- m11[1:600]
+m12_train <- m12[1:600]
+
+# Month dummies for test
+m1_test <- m1[601:731]
+m2_test <- m2[601:731]
+m3_test <- m3[601:731]
+m4_test <- m4[601:731]
+m5_test <- m5[601:731]
+m6_test <- m6[601:731]
+m7_test <- m7[601:731]
+m8_test <- m8[601:731]
+m9_test <- m9[601:731]
+m10_test <- m10[601:731]
+m11_test <- m11[601:731]
+m12_test <- m12[601:731]
+```
+
+```{r}
+# Creation of manual dummy variables for day of the week
+d1=rep(0,n) #Friday
+d2=rep(0,n) #Saturday
+d3=rep(0,n) #Sunday 
+d4=rep(0,n) #Monday
+d5=rep(0,n) #Tuesday
+d6=rep(0,n) #Wednesday
+d7=rep(0,n) #Thursday
+
+for (i in 1:n){
+  if (all$WKDY[i]== 1) d1[i]=1 else d1[i]=0 # When wkdy column is = 1, 1 is assigned to first wkdy dummy indicator
+  if (all$WKDY[i]== 2) d2[i]=1 else d2[i]=0
+  if (all$WKDY[i]== 3) d3[i]=1 else d3[i]=0
+  if (all$WKDY[i]== 4) d4[i]=1 else d4[i]=0
+  if (all$WKDY[i]== 5) d5[i]=1 else d5[i]=0
+  if (all$WKDY[i]== 6) d6[i]=1 else d6[i]=0
+  if (all$WKDY[i]== 7) d7[i]=1 else d7[i]=0
+}
+
+# Weekday dummies for train
+d1_train <- d1[1:600]
+d2_train <- d2[1:600]
+d3_train <- d3[1:600]
+d4_train <- d4[1:600]
+d5_train <- d5[1:600]
+d6_train <- d6[1:600]
+d7_train <- d7[1:600]
+
+# Weekday dummies for test
+d1_test <- d1[601:731]
+d2_test <- d2[601:731]
+d3_test <- d3[601:731]
+d4_test <- d4[601:731]
+d5_test <- d5[601:731]
+d6_test <- d6[601:731]
+d7_test <- d7[601:731]
+```
+
+```{r}
+#Time Series Plot of variable of interest (Collisions)
+ts.plot(crash[,"COLLISIONS"]) #plot of the time series of the data
+
+#Seasonal Box Plot for day of week
+boxplot(COLLISIONS~crash_day, data = all) #plot of the seasonality looking by day of the week, 2 and 3 are Saturday and Sunday, so it makes sense that the avg daily crashes are lower than that of the week days
+
+#Seasonal Box Plot for month of year
+boxplot(COLLISIONS~Month, data = all)
+
+
+#ACF Plot of the collision data
+acf(crash[,"COLLISIONS"], plot = TRUE) #ACF looking at the first 27 lags, it appears that there is a pattern/cycle in the ACF, which suggests seasonality in the data, additionally multiple lags appear to be surpassing the 2 standard error bounds
+``` 
+
+#2.1 Deterministic Time Series Models (Seasonal Dummies)
+```{r}
+#Seasonal Dummy variables with a trend
+time<-seq(1, length(train_crash)) #Create a time variable for the model
+
+#Create Seasonal Dummy variables with a trend
+dummy <-lm(train_crash~time+m2_train+m3_train+m4_train+m5_train+m6_train+
+         m7_train+m8_train+m9_train+m10_train+m11_train+m12_train+d2_train+d3_train+d4_train+d5_train+d6_train+
+         d7_train) #January and Friday are reference month and  
+
+#Summarize model
+summary(dummy)
+
+#Plot actual versus predicted of the model
+plot.ts(train_crash, main="Actual versus Predicted Seasonal Dummy Collisions", ylab="Collisions",col="blue")
+lines(predict(dummy),col="red")
+```
+
+#2.2 Seasonal dummy model in terms of fit (using R-square, MAPE, RMSE and MAE) and hold-out sample (using MAPE, RMSE and MAE).
+```{r}
+#Evaluation of Seasonal Dummy Variable Model
+
+#Training Data Prediction
+pred=predict(dummy, newdata = data.frame(time = time,m2_train = m2_train,m3_train = m3_train, m4_train = m4_train, m5_train= m5_train,
+m6_train= m6_train, m7_train = m7_train, m8_train = m8_train, m9_train = m9_train, m10_train = m10_train, m11_train = m11_train, m12_train = m12_train, d2_train = d2_train, d3_train = d3_train, d4_train = d4_train, d5_train = d5_train, d6_train = d6_train, d7_train = d7_train), interval="prediction") 
+
+#Calculating Evaluation Metrics for training sample
+SD_Train_Mape= mape(train_crash, pred[,1]) 
+SD_Train_Rmse = rmse(train_crash, pred[,1])
+SD_Train_Mae = mae(train_crash, pred[,1])
+SD_Train_R2 = 1 - sum((train_crash - pred[,1])^2) / sum((train_crash - mean(train_crash))^2)
+
+#Holdout data prediction
+time_test <- seq(601, 731)
+pred_test <- predict(dummy, newdata = data.frame(time = time_test, m2_train = m2_test,m3_train = m3_test, m4_train = m4_test, m5_train= m5_test, m6_train= m6_test, m7_train = m7_test, m8_train = m8_test, m9_train = m9_test, m10_train = m10_test, m11_train = m11_test, m12_train = m12_test, d2_train = d2_test, d3_train = d3_test, d4_train = d4_test, d5_train = d5_test, d6_train = d6_test, d7_train = d7_test), interval = "prediction")
+
+#Calculating Evaluation Metrics for holdout sample
+SD_Test_Mape= mape(test_crash, pred_test[,1]) 
+SD_Test_Rmse = rmse(test_crash, pred_test[,1])
+SD_Test_Mae = mae(test_crash, pred_test[,1])
+SD_Test_R2 = 1 - sum((test_crash - pred_test[,1])^2) / sum((test_crash - mean(test_crash))^2)
+
+
+#Creating df of metrics for seasonal dummy variable model
+SD_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(SD_Train_Mape, SD_Train_Rmse, SD_Train_Mae, SD_Train_R2),
+                Holdout_set = c(SD_Test_Mape, SD_Test_Rmse, SD_Test_Mae, SD_Test_R2))
+SD_Metric_df
+```
+
+#2.3 Seasonal Dummy variable residuals
+```{r}
+#ACF of residuals for Dummy Variable Model
+res_dummy=residuals(dummy) #Residuals of seasonal dummy var model
+acf(res_dummy,main="ACF of Regression Residuals for seasonsal dummy model",col="blue") #ACF of SDM residuals
+Box.test(res_dummy, lag = 20) #ask what lag to use for this data
+
+#The acf of residuals does not appear to be white noise, as the p-val is so small and we can see multiple lags surpassing the 2se bounds
+```
+
+#2.1 Deterministic Time Series Models (Cyclical Trend)
+```{r}
+#Creating Periodogram
+library(TSA)
+#Creating the trend component
+time=seq(1,length(train_crash))
+#removing trend
+detrend<-lm(train_crash~time)
+
+#Creating Periodogram
+prdgrm=periodogram(detrend$residuals,col="blue")
+period=1/prdgrm$freq
+
+#Plotting Periodogram
+par(mfrow=c(1,2))
+periodogram(detrend$residuals,col="blue")
+plot(period,prdgrm$spec, type="h",col="blue",ylab="Peridogram",lwd=2)
+
+#Define frequency and amplitude from the periodogram output
+frequency=prdgrm$freq
+amplitude=prdgrm$spec
+
+#Periodogram DF to see which periods have the highest amplitudes
+periodogram_df = cbind(period,frequency, amplitude) #Create periodogram
+periodogram_df = data.frame(periodogram_df) #Make periodogram into a dataframe so it can be properly sorted 
+periodogram_df = periodogram_df[order(periodogram_df$amplitude, decreasing = TRUE),] #Now sort the periodgram by decreasing amplitude
+head(periodogram_df, 15) # Top 15 amplitudes
+
+#After sorting by amplitude, we can observe that the top two periods are 7 and 3.5, while the period 2.33 is 14th.
+```
+
+```{r}
+#Define time (trend component) and n
+time=seq(1,length(train_crash)) #This time variable when used in the model is insignificant, with a p-val of 0.11, so drop from model
+n=length(train_crash)
+
+#Creating the cos and sin pairs for top 6 highest amplitudes
+cos1=cos(2*pi*(86/n)*time) #For period 6.976
+sin1=sin(2*pi*(86/n)*time)
+
+cos2=cos(2*pi*(171/n)*time) #For period 3.508
+sin2=sin(2*pi*(171/n)*time)
+
+cos3=cos(2*pi*(172/n)*time) #For period 3.488
+sin3=sin(2*pi*(172/n)*time)
+
+cos4=cos(2*pi*(2/n)*time) #For period 300
+sin4=sin(2*pi*(2/n)*time)
+
+cos5=cos(2*pi*(85/n)*time) #for period 7.058
+sin5=sin(2*pi*(85/n)*time)
+
+cos6=cos(2*pi*(3/n)*time) #For period 200
+sin6=sin(2*pi*(3/n)*time)
+
+#Define cyclical trend model
+CM <-lm(train_crash~time+cos1+sin1+cos2+sin2+cos3+sin3+cos4+sin4+cos5+sin5+cos6+sin6) 
+summary(CM) #Based on the model output, periods 7 and 3.5 are significant, while period 2.33 is insignificant
+
+#TS plot for Predicted vs Actual 
+plot.ts(train_crash, main="Actual versus Predicted Cyclical trends Collisions", ylab="Collisions",col="blue")
+lines(predict(CM),col="red") 
+```
+#2.2 Seasonal dummy model in terms of fit (using R-square, MAPE, RMSE and MAE) and hold-out sample (using MAPE, RMSE and MAE).
+```{r}
+#Evaluation of Cyclical trend model
+
+#Define Cos and Sin pairs and time for holdout sample
+time_test = c(601:731)
+
+cos1_test=cos(2*pi*(86/n)*time_test) 
+sin1_test=sin(2*pi*(86/n)*time_test)
+
+cos2_test=cos(2*pi*(171/n)*time_test) 
+sin2_test=sin(2*pi*(171/n)*time_test)
+
+cos3_test=cos(2*pi*(172/n)*time_test) 
+sin3_test=sin(2*pi*(172/n)*time_test)
+
+cos4_test=cos(2*pi*(2/n)*time_test) 
+sin4_test=sin(2*pi*(2/n)*time_test)
+
+cos5_test=cos(2*pi*(85/n)*time_test) 
+sin5_test=sin(2*pi*(85/n)*time_test)
+
+cos6_test=cos(2*pi*(3/n)*time_test) 
+sin6_test=sin(2*pi*(3/n)*time_test)
+
+#Training Sample Prediction
+pred_train = predict(CM, data.frame(time=time,cos1=cos1,sin1=sin1, cos2=cos2,sin2=sin2, cos3 = cos3, sin3 =sin3, cos4=cos4,sin4=sin4, cos5=cos5,sin5=sin5, cos6 = cos6, sin6 =sin6))
+
+#Training Sample Metrics
+CM_train_mape = mape(train_crash,pred_train)
+CM_train_rmse = rmse(train_crash,pred_train)
+CM_train_mae = mae(train_crash,pred_train)
+CM_Train_R2 = 1 - sum((train_crash - pred_train)^2) / sum((train_crash - mean(train_crash))^2)
+
+
+#Holdout sample prediction
+pred_test=predict(CM,data.frame(time=time_test,cos1=cos1_test,sin1=sin1_test, cos2=cos2_test,sin2=sin2_test, cos3 = cos3_test, sin3 =sin3_test, cos4=cos4_test,sin4=sin4_test, cos5=cos5_test,sin5=sin5_test, cos6 = cos6_test, sin6 =sin6_test))  
+
+#Holdout Sample Metrics
+CM_test_mape = mape(test_crash,pred_test)
+CM_test_rmse = rmse(test_crash,pred_test)
+CM_test_mae = mae(test_crash,pred_test)
+CM_Test_R2 = 1 - sum((test_crash - pred_test)^2) / sum((test_crash - mean(test_crash))^2)
+
+#Creating dataframe for cyclical trend model
+CM_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(CM_train_mape, CM_train_rmse, CM_train_mae, CM_Train_R2),
+                Holdout_set = c(CM_test_mape, CM_test_rmse, CM_test_mae, CM_Test_R2))
+CM_Metric_df
+```
+
+#2.3 Cyclical trend residuals
+```{r}
+#ACF of residuals of seasonal for Cyclical trend model
+res_CM=residuals(CM) 
+acf(res_CM,main="ACF of Regression Residuals for Cyclical trend model",col="blue") 
+Box.test(res_CM, lag = 20) 
+```
+#3.1 Discussion of independent variables. Correlation analysis and scatter plots. 
+```{r}
+#Create dataframe from the TS object for the correlation analysis
+reg_data = data.frame(crash)
+
+#Clean NA values present
+reg_data[is.na(reg_data)] = 0 #Assigns a value of 0 to rows with an NA (wind speed col)
+
+#Create Plot for Correlation
+pairs(reg_data[,2:6],lower.panel = NULL,col="blue")
+
+#Create Correlation Matrix for variables
+cor(reg_data[,2:6])
+```
+#3.2 Comparison of  "candidate" models based on variables: AWND, TMAX, TMIN, PRCP
+```{r}
+#Creating independent variables for training sample and holdout sample:
+
+#Dependent variable
+train_crash = crash[,"COLLISIONS"][1:600] #600 observations for the training data
+test_crash = crash[,"COLLISIONS"][601:731] #131 observations for the holdout (test) data
+
+#Dealing with NA values in AWND column
+train_AWND = crash[,"AWND"][1:600] #Average wind speed variable
+train_AWND[is.na(train_AWND)] = 0 #Impute NA values with 0
+test_AWND = crash[,"AWND"][601:731] 
+test_AWND[is.na(test_AWND)] = 0 #Impute NA values with 0
+
+#Remaining Independent Variables
+train_TMAX = crash[,"TMAX"][1:600] #Max temperature of the day
+test_TMAX = crash[,"TMAX"][601:731] 
+
+train_TMIN = crash[,"TMIN"][1:600] #Min temperature of the day
+test_TMIN = crash[,"TMIN"][601:731] 
+
+train_PRCP = crash[,"PRCP"][1:600] #precipitation in (inches or centimeters?) for the day
+test_PRCP = crash[,"PRCP"][601:731] 
+
+#Creating and summarizing model 
+REG_1<-lm(train_crash~train_AWND+train_TMAX+train_TMIN+train_PRCP) 
+summary(REG_1)
+
+#Actual vs Predicted values for TS plot
+plot.ts(train_crash, main="Actual versus Predicted TS regression model 1", ylab="Collisions",col="blue") 
+lines(predict(REG_1),col="red")
+```
+
+#3.2 Comparison of REG1 model in terms of fit (using R-square, MAPE, RMSE and MAE) and hold-out sample (using MAPE, RMSE and MAE).
+```{r}
+#Training Data Prediction
+train_pred=predict(REG_1, data.frame(train_AWND, train_TMAX, train_TMIN, train_PRCP), interval="prediction")
+
+#Calculating Training Data Metrics
+REG_1_Train_Mape = mape(train_crash, train_pred[,1])
+REG_1_Train_Rmse = rmse(train_crash, train_pred[,1])
+REG_1_Train_Mae = mae(train_crash, train_pred[,1])
+REG_1_Train_R2 = 1 - sum((train_crash - train_pred[,1])^2) / sum((train_crash - mean(train_crash))^2)
+
+#Holdout data Prediction:
+test_pred=predict(REG_1, newdata = data.frame(train_AWND = test_AWND, train_TMAX = test_TMAX, train_TMIN = test_TMIN, train_PRCP = test_PRCP),interval="prediction")
+
+#Calculating Holdout Data Metrics
+REG_1_Test_Mape =mape(test_crash, test_pred[,1])
+REG_1_Test_Rmse = rmse(test_crash, test_pred[,1])
+REG_1_Test_Mae = mae(test_crash, test_pred[,1])
+REG_1_Test_R2 = 1 - sum((test_crash - test_pred[,1])^2) / sum((test_crash - mean(test_crash))^2)
+
+#Creating dataframe for Regression model
+Reg1_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(REG_1_Train_Mape, REG_1_Train_Rmse, REG_1_Train_Mae, REG_1_Train_R2),
+                Holdout_set = c(REG_1_Test_Mape, REG_1_Test_Rmse, REG_1_Test_Mae, REG_1_Test_R2))
+Reg1_Metric_df
+```
+
+#3.2 Comparison of "candidate" models based on variables: AWND, TMAX, TMIN
+```{r}
+#Creating and summarizing model without prcp column now
+REG_2<-lm(train_crash~train_AWND+train_TMAX+train_TMIN) 
+summary(REG_2)
+
+#Actual vs Predicted values for TS plot
+plot.ts(train_crash, main="Actual versus Predicted TS regression model 1", ylab="Collisions",col="blue") 
+lines(predict(REG_2),col="red")
+```
+
+#3.2 Comparison of REG2 (using R-square, MAPE, RMSE and MAE) and hold-out sample (using MAPE, RMSE and MAE).
+```{r}
+#Training Data Prediction
+train_pred=predict(REG_2, data.frame(train_AWND, train_TMAX, train_TMIN, train_PRCP), interval="prediction")
+
+#Calculating Training Data Metrics
+REG_2_Train_Mape = mape(train_crash, train_pred[,1])
+REG_2_Train_Rmse = rmse(train_crash, train_pred[,1])
+REG_2_Train_Mae = mae(train_crash, train_pred[,1])
+REG_2_Train_R2 = 1 - sum((train_crash - train_pred[,1])^2) / sum((train_crash - mean(train_crash))^2)
+
+#Holdout data Prediction:
+test_pred=predict(REG_2, newdata = data.frame(train_AWND = test_AWND, train_TMAX = test_TMAX, train_TMIN = test_TMIN, train_PRCP = test_PRCP),interval="prediction")
+
+#Calculating Holdout Data Metrics
+REG_2_Test_Mape =mape(test_crash, test_pred[,1])
+REG_2_Test_Rmse = rmse(test_crash, test_pred[,1])
+REG_2_Test_Mae = mae(test_crash, test_pred[,1])
+REG_2_Test_R2 = 1 - sum((test_crash - test_pred[,1])^2) / sum((test_crash - mean(test_crash))^2)
+
+#Creating dataframe for Regression model
+Reg2_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(REG_2_Train_Mape, REG_2_Train_Rmse, REG_2_Train_Mae, REG_2_Train_R2),
+                Holdout_set = c(REG_2_Test_Mape, REG_2_Test_Rmse, REG_2_Test_Mae, REG_2_Test_R2))
+Reg2_Metric_df
+```
+
+
+
+
+
+
+
+#3.3 Residuals/is best model stationary
+```{r}
+#ACF of regression residuals
+res=residuals(REG_1) 
+acf(res,main="ACF of Regression Residuals for REG_1",col="red",lag=24)
+Box.test(res, lag=20)
+```
+
+## SECTION 4.1) You will be using your target (dependent) variable and develop an ARIMA model to describe it. For this you need to transform the target variable time series to a stationary series by differencing it and then identify an AR, MA or ARMA models. If you have seasonal characteristics in the data you may need to use seasonal differencing as discussed in the Johnson and Johnson data example discussed in class (Week 12). Potentially, you may need to include seasonal AR and MA components in the model discussed in Week 13.
+```{r}
+
+#Time Series Plot of variable of interest (Collisions)
+ts.plot(crash[,"COLLISIONS"])
+
+#ACF Plot
+acf(crash[,"COLLISIONS"])
+
+#: The Time Series plot shows that there is no clear Trend or Cyclical component to the model; thus, differencing at lag 1 is unnecessary. However, there seems to be strong autocorrelation between lag 0 (time t) and every lag that is a factor of 7 (lags 7, 14, 21, etc). The time series needs to be differenced at the (daily) seasonal level to remove the seasonal component so that the time series is stationary (constant mean, constant variance, and CONSISTENT AUTOCOVARIANCE AT ALL LAGS). IN OTHER WORDS, although there seems to be a constant mean and variance in the time series, which indicates that there is no (clear and obvious) trend component, there is still strong residual seasonal autocorrelation at lags 7, 14, 21 (which implies that there is considerable weekly/daily seasonality in the data). Additionally, because there seems to be nonstationary seasonal behavior in the data (extremely slow decay at the seasonal lags, at factors of 7), seasonal differencing is necessary at s=7. 
+```
+
+```{r}
+#Seasonal Differencing (ACF and PACF Plot)
+
+acf(diff(crash[,"COLLISIONS"], lag=7), lag=48, col="blue", main="ACF of (1-B^7)COLLISIONS")
+
+pacf(diff(crash[,"COLLISIONS"], lag=7),lag = 48, col='blue', lwd=1, main="PACF of (1-B^7)COLLISIONS")
+
+# COMMENT: After differencing, the series appears stationary.
+
+# SEASONAL COMMENTS: After differencing at the seasonal lags, PACF seems to be decaying slowly at lags 7, 14, 21, 28, before reaching 0 autocorrelation. ACF is chopped off after lag 7; thus, an MA(1)s=7 Process likely best model fit.
+
+ # NONSEASONAL COMMENTS: Perhaps a chopping off after lag 1 (nonseasonal component) in the PACF. ACF at nonseasonal lags seems to decay to 0.
+
+```
+
+```{r}
+# Estimating a model using training sample
+library(forecast)
+fit = Arima(train_crash, order = c(1,1,2),seasonal=list(order=c(0,1,1), period=7), lambda=0)
+
+summary(fit)
+acf(fit$residuals, lag = 48)
+pacf(fit$residuals, lag = 48)
+Box.test(fit$residuals, lag=24)
+
+#COMMENT: By applying a Moving Average Component to the seasonality, the underlying autocorrelation at the weekly seasonal level [lag (s=7)] was effectively removed. Adding the Moving Average component to the difference of Yt and Yt-7 effectively handles and captures most of the residual relationship left over that influences todays number of collisions in NYC with last weeks; however, there was still correlation at the nonseasonal lags left to be captured. The Box Pierce test returned an extremely small p value, indicating that the autocorrelation at lags 1-24 were not yet white noise. Moreover, there appeared to be extremely slow decay in both the ACF and PACF at the nonseasonal lags, with random lags having autocorrelation and partial autocorrelation statistically different than 0. Thus, nonseasonal differencing was applied to remove any hidden trend/cyclical component of the series.
+
+# After adding the nonseasonal differencing to the model, the ACF appeared to decay to 0 in a stationary manner and the PACF appeared to chop off after lag 1. Thus, an AR(1) process was added to the model, to capture the autocorrelations of the nonseasonal component of the series.
+
+# We then argued that the PACF exhibited decay, after adding the AR(1) process to the model, and the ACF chopped off after lag 2; thus, we added an MA(2) process to the model, at the nonseasonal component (to get a more favorable p value from the Box Pierce Test.)
+# This sequential procedure, cumulatively, removed the autocorrelations and partial autocorrelations at all nonseasonal and seasonal lags of the model, while keeping our model parsimonious to diminish the likelihood of overfitting.
+
+# COMMENT: This step by step procedure, moving from using strictly an MA(1)s=7 process to a Mixed ARIMA (1,1,2)x(0,1,1)s=7 process to capture correlations at seasonal and nonseasonal lags (after differencing), increased the p value of the box pierce test significantly (from 2.2e-16 to 0.2357) . This also increased training fit significantly across the board of all viable error metrics.
+
+#COMMENT: Because the p value of the Box pierce test is now greater than our level of significance (0.05), we fail to reject the null hypothesis that the residuals are no different than white noise. Thus, because the residuals resemble white noise, the correlation between errors at lags 1-24 are statistically equal to 0. The model can now effectively be used for forecasting at the 5% level of significance. Moreover, all coefficients in the model are statistically significant at the 5% level of significance.
+```
+
+```{r}
+# Test Performance on Holdout Sample Using Section 4.1 Model
+
+preds <- forecast(fit, h = length(test_crash)) # Generate forecasts for the test set
+
+# Display Summary of Predictions
+summary(preds)
+
+# Extract Forecast Values
+holdfit <- preds$mean
+
+# Accuracy Measures for Holdout Sample
+accuracy(holdfit, test_crash)
+```
+```{r}
+# TABLE of Predictive Performance Metrics FOR 4.1
+
+#training metrics
+acc_train<- accuracy(forecast(fit, h=length(train_crash)), train_crash)
+
+#manually deriving Training R-Squared Metrics
+REG_Train_R2 <- 1 - sum((train_crash - fitted(fit))^2) / sum((train_crash - mean(train_crash))^2)
+
+#test metrics
+acc<- accuracy(holdfit, test_crash)
+
+#manually deriving Test R-Squared Metric
+REG_Test_R2 <- 1 - sum((test_crash - holdfit)^2) / sum((test_crash - mean(test_crash))^2)
+
+
+Model_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(acc_train[1,5], acc_train[1,2], acc_train[1,3], REG_Train_R2),
+                Holdout_set = c(acc[,5], acc[,2], acc[,3], REG_Test_R2))
+Model_Metric_df
+
+# Best: Best performance on holdout set (for most metrics). Simpler model. <-- Relative to Model derived in 4.2 and 4.3.
+# HOWEVER, it is close between this model and 4.3 (on TEST/HOLDOUT sample). Very.
+# Simplest: 4.1
+# BEST MAPE: 4.3
+# BEST RMSE: 4.1
+# Best MAE: 4.3
+# Best R^2: 4.1
+
+```
+
+
+
+## SECTION 4.2) You will be analyzing the residuals of the time series regression models from SECTION 3.3. If these residuals behave like stationary time series then you can model them using an AR, MA, or ARMA process as discussed in Lecture Sets 7 and 8. If the residuals do not exhibit stationary behavior then you need to difference the dependent (target) variable (and your predictors). NOTE: Professor stated that it is best to simply model and analyze the residuals of the "best" time series regression model from 3.3.
+
+```{r}
+# Time Series Regression Model 1 - Collisions regressed on the three independent variables (best time series regression model from 3.3)
+acf(REG_1$residuals, lag=48)
+
+# COMMENT: Non stationary residuals at the seasonal (s=7) lags. Need to difference dependent variable at the seasonal level.
+
+```
+```{r}
+# ACF AND PACF OF DIFFERENCED RESIDUALS
+
+x = cbind(train_AWND, train_TMAX, train_TMIN)
+
+regdif = arima(train_crash, seasonal = list(order = c(0, 1, 0), period = 7), xreg=x)
+
+acf(regdif$residuals, lag = 48, col='red')
+pacf(regdif$residuals, lag = 48, col='red')
+
+Box.test(regdif$residuals)
+
+# COMMENT: After differencing, appears to be gradual decay in PACF at seasonal lags. Chopping off at ACF, lag 7. Therefore, because differenced series indicates stationarity, will try fitting an MA(1) process at the first seasonal lag (7).
+```
+```{r}
+# ESTIMATING CORRECTED REGRESSION MODEL
+
+regarima <- arima(train_crash, seasonal=list(order = c(0,1,1),period=7), xreg=x)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals) 
+
+# COMMENT: Autocorrelation and partial autocorrelation seems to be handled; however, the p value returned by the Box Pierce test is still extremely small. Moreover, there seems to be gradual decay in the ACF at the nonseasonal lags, with PACF showing a chopping off at lag 1. Therefore, will try adding an AR(1) process at the nonseasonal lags to the model.
+```
+```{r}
+# ATTEMPTING TO IMPROVE CORRECTED MODEL
+
+
+regarima <- Arima(train_crash, order = c(1,0,0), seasonal=list(order = c(0,1,1),period=7), xreg=x)
+summary(regarima)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals)
+
+# COMMENT: MULTIPLICATIVE ARMA(1,0,0) x (0,1,1) appears to be best parsimonious model. At the 5% level of significance (using the p-value derived from the Box-Pierce Test), we fail to reject the null hypothesis that the residuals are white noise; thus, this model can be used for modeling the TS. However, it is notable that neither the 'train_AWND' nor the 'train_TMIN' features are significant. They can be removed from the model; thus, will drop these features from the model.
+
+```
+```{r}
+# ATTEMPTING TO IMPROVE CORRECTED MODEL (dropping non significant regressors)
+
+
+regarima <- Arima(train_crash, order = c(1,0,0), seasonal=list(order = c(0,1,1),period=7), xreg=train_TMAX)
+summary(regarima)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals, lag=24)
+
+# COMMENT: After changing the lag to 24 (thus changing the calculated value of the Box Pierce Test), noticed that the p value of model for this model was still extremely small, indicating that the residuals of the model were still correlated various lags 1-24 and not yet white noise. Moreover, after more closely inspecting the ACF of the residuals, there appears to be extremely slow decay to zero at spurious lags throughout. Thus, differencing at the nonseasonal lags will likely be beneficial.
+
+# COMMENT: All coefficients in the model (phi, theta, and the x independent regressor) are statistically significant.
+
+
+```
+
+```{r}
+
+# ATTEMPTING TO IMPROVE CORRECTED MODEL (additionally differencing at the nonseasonal level)
+
+
+regarima <- Arima(train_crash, order = c(1,1,0), seasonal=list(order = c(0,1,1),period=7), xreg=train_TMAX)
+summary(regarima)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals, lag = 24)
+
+# COMMENT: Box Pierce Test p value still extremely small. Corrective Model could be improved. ACF shows more gradual decay to zero at lags 1-24, indicating differencing at nonseasonal level makes residuals more stationary. However, may also be easier to interpret a gradual decay in the PACF and a chopping off at lag 2 in the ACF; thus, will leverage an AR(2) process to the nonseasonal differenced series, rather than an AR(1) process.
+
+```
+```{r}
+# ATTEMPTING TO IMPROVE CORRECTED MODEL (AR(2) at the nonseasonal level, after differencing)
+
+
+regarima <- Arima(train_crash, order = c(2,1,0), seasonal=list(order = c(0,1,1),period=7), xreg=train_TMAX)
+summary(regarima)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals, lag = 24)
+
+# COMMENT: Box Pierce P value still incredibly small. Interpreting a gradual decay in residuals (lags 1-24) in ACF and chopping off at lag 3. Thus, will leverage an ARMA(2,1,3) at the nonseasonal level, rather than an AR(2,1,0) process to see how this fit changes performance outputs and the calculated value of Box Pierce test.
+```
+```{r}
+# ATTEMPTING TO IMPROVE CORRECTED MODEL (additionally differencing at the nonseasonal level)
+
+
+regarima <- Arima(train_crash, order = c(2,1,3), seasonal=list(order = c(0,1,1),period=7), xreg=train_TMAX)
+summary(regarima)
+
+acf(regarima$residuals, lag = 48)
+pacf(regarima$residuals, lag = 48)
+Box.test(regarima$residuals, lag = 24)
+
+# COMMENT: MULTIPLICATIVE ARMA(2,1,3) x (0,1,1)s=7 appears to be best parsimonious model. At the 5% level of significance (using the p-value derived from the Box-Pierce Test, for lags 1-24), we fail to reject the null hypothesis that the residuals are white noise; thus, this model can be used for modeling the NYC Collision TS effectively.
+
+# COMMENT: The Box Pierce Test returned a value of .38 and none of the lags of the residuals in ACF appear to lie outside of the S.E. bounds, indicating that autocorrelations between residuals at the aforementioned lags have been removed. Moreover, only one lag in the PACF (lag 16) lies outside of the S.E. bounds and trying to remove this partial correlation would unecessarily increase model complexity.
+
+# COMMENT: All phi coefficients, theta coefficients, and independent regressor coefficients in model are statistically significant.
+```
+
+```{r}
+# PREDICTIVE PERFORMANCE OF MODEL FROM 4.2 ON HOLDOUT SAMPLE
+
+x_test <- test_TMAX
+colnames(x_test) <- colnames(train_TMAX) # Matching column names between training and testing regressors
+
+# Use the forecast function on the pre-trained model
+preds <- forecast(regarima, xreg = x_test, h = length(test_crash))
+
+# Display Summary of Predictions
+summary(preds)
+
+# Extract Forecast Values (Point Forecasts)
+holdfit <- preds$mean
+
+# Accuracy Measures for Holdout Sample
+accuracy(holdfit, test_crash)
+```
+
+```{r}
+
+# TABLE of Predictive Performance Metrics FOR 4.2
+
+#training metrics
+acc_train<- accuracy(forecast(regarima, xreg = train_TMAX, h=length(train_crash)), train_crash)
+
+#manually deriving Training R-Squared Metrics
+REG_Train_R2 <- 1 - sum((train_crash - fitted(regarima))^2) / sum((train_crash - mean(train_crash))^2)
+
+#test metrics
+acc<- accuracy(holdfit, test_crash)
+
+#manually deriving Test R-Squared Metric
+REG_Test_R2 <- 1 - sum((test_crash - holdfit)^2) / sum((test_crash - mean(test_crash))^2)
+
+
+Model_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(acc_train[1,5], acc_train[1,2], acc_train[1,3], REG_Train_R2),
+                Holdout_set = c(acc[,5], acc[,2], acc[,3], REG_Test_R2))
+Model_Metric_df
+
+```
+
+
+
+## SECTION 4.3) You will be analyzing the residuals of the deterministic time series models from SECTION 2.3. If these residuals behave like stationary time series then you can model them using an AR, MA, or ARMA process. If they do not exhibit stationary behavior then you can justify that. In this case you will not be able to model these nonstationary residuals.
+```{r}
+# ANALYZING RESIDUALS OF DETERMINISTIC TS MODEL CONTAINING MONTHLY AND DAILY SEASONAL DUMMY VARIABLES
+
+deterministic_model <-lm(train_crash~m3_train+m4_train+m5_train+m6_train+
+         m7_train+m8_train+m9_train+m10_train+m11_train+m12_train+d2_train+d3_train+d4_train+d5_train+d6_train+
+         d7_train) #Seasonal dummy model with each day of week and month as dummy. Reference month = January. Reference day = Friday.
+
+summary(deterministic_model) #Show what the model looks like, we see that all variables are significant EXCEPT the dummy variable for February (NYC Collisions in February are not statistically different than those in January). Thus, we dropped it to have a more parsimonious model. Thus the intercept now effectively represents January, February, and Friday collisions in NYC.
+# NOTE: Tried to add trend component but was NOT significant; thus, it was removed.
+
+deterministic_res=residuals(deterministic_model) #Residuals of seasonal dummy variable model
+
+acf(deterministic_res,main="ACF of Regression Residuals",col="blue", lag=48) #We can see that the residuals still illustrate rather gradual decay to 0 in the ACF from lags 1-48; thus, autocorrelation of residuals do appear stationary.
+
+pacf(deterministic_res, main = "PACF of Regression Residuals", col="blue", lag = 48)
+#COMMENT: Seems to be chopping off after lag 1 in PACF; thus, because (initial interpretation) decay in ACF, will try a AR(1) process. HOWEVER, because the PACF has a handfdul of spurious lags that lie slightly outside of the SE bounds, the underlying residuals of the TS may be nonstationary, as they do not decay quickly to 0 in the PACF. Will still attempt to model them by inducing stationarity if needed. 
+Box.test(M_D_TM, lag = 24)
+```
+```{r}
+# Deterministic TS Corrected Model
+
+x <- cbind(m3_train,m4_train,m5_train,m6_train,
+         m7_train,m8_train,m9_train,m10_train,m11_train,m12_train,d2_train,d3_train,d4_train,d5_train,d6_train,
+         d7_train)
+
+
+
+ar_fit <- Arima(train_crash, order = c(1,0,0), xreg=x)
+summary(ar_fit)
+acf(ar_fit$residuals, lag=48)
+pacf(ar_fit$residuals, lag=48)
+Box.test(ar_fit$residuals, lag=24)
+
+#COMMENT: All x independent regressors (including the intercept), as well as the phi(1) coefficient, are statistically significant and useful in model. Box Pierce Test p value still incredibly small, indicating that there is still underlying correlation between residuals at lags 1-24.
+
+# COMMENT: Because the PACF still exhibits some spurious residuals lying outside of the SE bounds between lags 1-48 (such as that at lag 44), the residuals are likely not yet stationary due to the slightly hidden trend/cyclical structure of the underlying TS. Will try to induce stationarity by differencing to see if ACF/PACF is made easier to interpret and more closely exhibits stationarity.
+```
+
+```{r}
+
+# Deterministic TS Corrected Model (inducing stationarity before interpretation)
+
+x <- cbind(m3_train,m4_train,m5_train,m6_train,
+         m7_train,m8_train,m9_train,m10_train,m11_train,m12_train,d2_train,d3_train,d4_train,d5_train,d6_train,
+         d7_train)
+
+
+
+ar_fit <- Arima(train_crash, order = c(0,1,0), xreg=x)
+summary(ar_fit)
+acf(ar_fit$residuals, lag=48)
+pacf(ar_fit$residuals, lag=48)
+Box.test(ar_fit$residuals, lag=24)
+
+#COMMENT: After differencing, ACF appears to chop off at lag 1. PACF gradual decay to 0. Differenced series is stationary. Will attempt to add an MA(1) process to differenced corrected deterministic model.
+
+```
+
+```{r}
+
+# Deterministic TS Corrected Model (adding an AR(1) Process to Differenced Series to induce stationarity in residuals)
+
+x <- cbind(m3_train,m4_train,m5_train,m6_train,
+         m7_train,m8_train,m9_train,m10_train,m11_train,m12_train,d2_train,d3_train,d4_train,d5_train,d6_train,
+         d7_train)
+
+
+
+ar_fit <- Arima(train_crash, order = c(1,1,2), xreg=x)
+summary(ar_fit)
+acf(ar_fit$residuals, lag=48)
+pacf(ar_fit$residuals, lag=48)
+Box.test(ar_fit$residuals, lag=24)
+
+#COMMENT: PACF can be interpreted as a chopping off at lag 2; thus, adding an AR(2) process to ultimately try an ARMA(1,1,2) Corrected Model. 
+
+# COMMENT: Because the ACF of the Residuals only show a few lags that lie slightly on or above the SE bounds, the PACF only has a few lags that lie above the SE bounds (lags 9, 16, and 45), and the p-value of the Box Pierce Test is greater than the level of significance of 5%, we can infer that the autocorrelation and partial autocorrelation of the residuals have been (mostly) removed by applying the Corrected Mix ARMA Process to the model. Thus, because we fail to reject the null hypothesis that the residuals are white noise and the regressor and phi(1) coefficients are all statistically significant, the Corrected Regression Model can effectively be used for forecasting.
+
+```
+
+```{r}
+
+# PREDICTIVE PERFORMANCE OF Corrected Deterministic Model FROM 4.3 ON HOLDOUT SAMPLE
+
+x_test <- cbind(m3_test,m4_test,m5_test,m6_test,
+         m7_test,m8_test,m9_test,m10_test,m11_test,m12_test,d2_test,d3_test,d4_test,d5_test,d6_test,
+         d7_test)
+
+colnames(x_test) <- colnames(x) # Matching column names between training and testing regressors
+
+# Using the forecast function on the pre-trained model
+preds <- forecast(ar_fit, xreg = x_test, h = length(test_crash))
+
+# Display Summary of Predictions
+summary(preds)
+
+# Extract Forecast Values (Point Forecasts)
+holdfit <- preds$mean
+
+# Accuracy Measures for Holdout Sample
+accuracy(holdfit, test_crash)
+
+
+```
+
+```{r}
+
+# TABLE of Predictive Performance Metrics FOR 4.3 Model
+
+#training metrics
+acc_train<- accuracy(forecast(ar_fit, xreg = x, h=length(train_crash)), train_crash)
+
+#manually deriving Training R-Squared Metrics
+REG_Train_R2 <- 1 - sum((train_crash - fitted(ar_fit))^2) / sum((train_crash - mean(train_crash))^2)
+
+#test metrics
+acc<- accuracy(holdfit, test_crash)
+
+#manually deriving Test R-Squared Metric
+REG_Test_R2 <- 1 - sum((test_crash - holdfit)^2) / sum((test_crash - mean(test_crash))^2)
+
+
+Model_Metric_df <- data.frame(Metric = c("MAPE", "RMSE", "MAE", "R2"), 
+                Training_set = c(acc_train[1,5], acc_train[1,2], acc_train[1,3], REG_Train_R2),
+                Holdout_set = c(acc[,5], acc[,2], acc[,3], REG_Test_R2))
+Model_Metric_df
+
+
+```
+
